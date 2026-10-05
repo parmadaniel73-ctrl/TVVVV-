@@ -1,1 +1,1233 @@
-Dark sector
+
+import numpy as np
+
+from scipy.integrate import solve_ivp
+from scipy.integrate import quad
+
+# =========================================
+# KONSTANTY
+# =========================================
+
+c = 299792.458  # km/s
+
+# =========================================
+# KOSMOLOGIE
+# =========================================
+H0 = 71.0
+Omega_r = 9e-5
+Omega_b = 0.049
+Omega_M = 0.315
+G_n = 6.67430e-11
+
+# =========================================
+# TVVVV PARAMETRY
+# =========================================
+a0 = 1.2e-10          # m/s^2
+
+c_ms = 299792458.0
+
+H0_si = H0 * 1000.0 / 3.085677581e22
+
+v_i = np.sqrt(a0 * c_ms / H0_si)
+
+chi0 = v_i / 1000
+
+print("v_i =", v_i/1000, "km/s")
+
+
+gamma_tvvvv = 5e-8
+
+
+beta = 0.27
+Omega_L = 0.0
+Omega_lam = 1.0 - Omega_b - Omega_M
+Omega_m = beta + gamma_tvvvv + Omega_b
+Omega_stiff = gamma_tvvvv
+Omega_DE = 1.0 - Omega_m - Omega_r
+# =========================================
+# W(χ)
+# =========================================
+
+def W_chi(chi):
+
+    x = 1.0 + chi / chi0
+
+    x = np.maximum(x, 1.000001)
+
+    L = np.log(x)
+
+    return L / (1.0 + L)
+
+# =========================================
+# Geff/G
+# =========================================
+
+def Geff_over_G(chi):
+
+    x = 1.0 + chi / chi0
+
+    x = np.maximum(x, 1.000001)
+
+    return G_n * (1.0 - beta + Omega_stiff * np.log(x))
+
+# =========================================
+# E(a)
+# =========================================
+
+def E_LCDM_z(z):
+
+    zp1 = 1.0 + z
+    return np.sqrt(
+        Omega_M * zp1**3
+        + Omega_r * zp1**4
+        + Omega_lam
+    )
+
+# =========================================
+# TVVVV H(z)
+# =========================================
+
+def H_TVVVV_z(z, chi):
+    zp1 = 1.0 + z
+
+    E2 = (
+        Omega_m * zp1**3      # baryony + shear jako prach
+        + Omega_r * zp1**4    # záření
+        + Omega_stiff * zp1**6  # torsion/stiff
+        + Omega_DE            # TVVVV vakuum
+    )
+
+    return H0 * np.sqrt(E2)
+
+# =========================================
+# dχ/dz
+# =========================================
+
+def dchi_dz(z, chi):
+
+    return c / H_TVVVV_z(z, chi)
+
+# =========================================
+# χ(z)
+# =========================================
+
+def chi_of_z(z_max):
+
+    sol = solve_ivp(
+
+        lambda z, chi:
+            dchi_dz(z, chi),
+
+        (0.0, z_max),
+
+        [0.0],
+
+        dense_output=True,
+
+        rtol=1e-6,
+        atol=1e-8
+    )
+
+    return sol.sol
+
+# =========================================
+# SOUND HORIZON
+# =========================================
+
+Omega_b = 0.049
+
+Omega_gamma = 5.38e-5
+
+def R_of_z(z):
+
+    return (
+        3.0 * Omega_b
+    ) / (
+        4.0 * Omega_gamma
+    ) / (1.0 + z)
+def c_s(z):
+
+    return c / np.sqrt(
+        3.0 * (1.0 + R_of_z(z))
+    )
+
+# =========================================
+# r_s(z*)
+# =========================================
+
+def r_s_LCDM(z_star):
+
+    integrand = lambda z: (
+
+        c_s(z)
+
+        /
+
+        (
+            H0 * np.sqrt(
+                Omega_r * (1.0 + z)**4
+                + Omega_M * (1.0 + z)**3
+                + Omega_lam
+            )
+        )
+    )
+
+    val, _ = quad(
+
+        integrand,
+
+        z_star,
+        1e5,
+
+        epsabs=1e-6,
+        epsrel=1e-6
+    )
+
+    return val
+
+def r_s_TVVVV(z_star):
+
+    integrand = lambda z: (
+
+        c_s(z)
+
+        /
+
+        (
+
+            H0 * np.sqrt(
+                Omega_r * (1.0 + z)**4
+                + Omega_m * (1.0 + z)**3
+
+            )
+        )
+    )
+
+    val, _ = quad(
+
+        integrand,
+
+        z_star,
+        1e5,
+
+        epsabs=1e-6,
+        epsrel=1e-6
+    )
+
+    return val
+
+
+# =========================================
+# θs
+# =========================================
+
+theta_s_Planck = 0.01041
+# =========================================
+# H0 inferred from θs
+# =========================================
+
+def H0_CMB_from_params(H0_val):
+
+    z_star = 1100
+
+    chi_sol = chi_of_z(z_star)
+
+    chi_z = lambda z: chi_sol(z)[0]
+
+
+    chi_T = chi_z(z_star)
+
+    rs = r_s_TVVVV(z_star)
+
+    theta = rs / chi_T
+
+    return H0_val * theta / theta_s_Planck
+
+# =========================================
+# TEST
+# =========================================
+
+
+    z_star = 1100.0
+
+    chi_sol = chi_of_z(z_star)
+
+    chi_z = lambda z: chi_sol(z)[0]
+
+    chi_T = chi_z(z_star)
+
+    rs = r_s_TVVVV(z_star)
+
+    theta = rs / chi_T
+
+    H0_cmb = H0_CMB_from_params(H0)
+
+
+
+
+
+    print("\nTVVVV sanity check:")
+
+    print(f"chi(z*) = {chi_T:.6f}")
+
+    print(f"r_s     = {rs:.6f}")
+
+    print(f"theta_s = {theta:.8f}")
+
+    print(f"H0_CMB  = {H0_cmb:.6f}")
+
+
+import numpy as np
+from scipy.integrate import solve_ivp
+
+from s8_h0_theta_star_2852026_bezscanu_jwst_tabulka import (
+    H0,
+    Omega_m,
+    chi_of_z,
+    H_TVVVV_z,
+    chi0,
+    beta
+)
+
+# ==========================================
+# převody
+# ==========================================
+
+def z_of_a(a):
+    return 1.0 / a - 1.0
+
+def chi_of_a(a, chi_solution):
+    z = z_of_a(a)
+    return float(chi_solution(z)[0])
+
+# ==========================================
+# Geff/G
+# ==========================================
+
+def Geff_over_G(chi):
+    x = 1.0 + chi / chi0
+    x = np.maximum(x, 1e-12)
+    return 1.0 - beta * np.log(x)
+
+# ==========================================
+# decoherence
+# ==========================================
+
+
+def Gamma_of_chi(chi):
+    x = 1.0 + chi / chi0
+    x = np.maximum(x, 1.000001)
+    L = np.log(x)
+    gamma = beta / (x * (1.0 + L))
+    return gamma
+
+def damping_term(chi, ddelta_da):
+    return Gamma_of_chi(chi) * ddelta_da
+
+# ==========================================
+# růstová rovnice TVVVV
+# ==========================================
+def growth_eq_TVVVV(a, y, chi_solution):
+    delta, ddelta_da = y
+
+    z   = z_of_a(a)
+    chi = chi_of_a(a, chi_solution)
+
+    # TADY BYLA CHYBA: musí tam jít chi, ne chi_solution
+    H = float(H_TVVVV_z(z, chi))
+
+    # numerická derivace dlnH/dlna
+    eps = 1e-3
+    ap = a * (1.0 + eps)
+    am = a * (1.0 - eps)
+
+    chip = chi_of_a(ap, chi_solution)
+    chim = chi_of_a(am, chi_solution)
+
+    Hp = float(H_TVVVV_z(z_of_a(ap), chip))
+    Hm = float(H_TVVVV_z(z_of_a(am), chim))
+
+    dlnH_dlna = (np.log(Hp) - np.log(Hm)) / np.log(ap / am)
+
+    # gravitační člen
+    grav = (
+        1.5
+        * Omega_m
+        * a**(-5)
+        / (H**2)
+    )
+    grav *= Geff_over_G(chi)
+
+    # damping
+    damp = damping_term(chi, ddelta_da)
+
+    d2delta_da2 = (
+        grav * delta
+        - ((3.0 / a) + dlnH_dlna / a) * ddelta_da
+        - damp
+    )
+
+    return [ddelta_da, float(d2delta_da2)]
+
+# ==========================================
+# solve
+# ==========================================
+
+def solve_growth_TVVVV(a_ini=1e-3, a_fin=1.0):
+    chi_solution = chi_of_z(1100.0)
+
+    y0 = [a_ini, 1.0]
+
+
+
+    # ==========================================
+
+def solve_growth_TVVVV(a_ini=1e-3, a_fin=1.0):
+    # POJISTKA: Pokud zvenčí omylem přiteče 0.0, přepíšeme ji na 1e-3
+    if a_ini <= 0.0:
+        a_ini = 1e-3
+
+    chi_solution = chi_of_z(1100.0)
+
+    # Počáteční podmínka: delta(a) ~ a v raném vesmíru
+    y0 = [a_ini, 1.0]
+
+    sol = solve_ivp(
+
+
+
+
+
+# =========================================
+# TVVVV H(z)
+# =========================================
+
+def H_TVVVV_z(z, chi):
+    zp1 = 1.0 + z
+
+    E2 = (
+        Omega_m * zp1**3      # baryony + shear jako prach
+        + Omega_r * zp1**4    # záření
+        + Omega_stiff * zp1**6  # torsion/stiff
+        + Omega_DE            # TVVVV vakuum
+    )
+
+    return H0 * np.sqrt(E2)
+
+# =========================================
+# dχ/dz
+# =========================================
+
+def dchi_dz(z, chi):
+
+    return c / H_TVVVV_z(z, chi)
+
+# =========================================
+# χ(z)
+# =========================================
+
+def chi_of_z(z_max):
+
+    sol = solve_ivp(
+
+        lambda z, chi:
+            dchi_dz(z, chi),
+
+        (0.0, z_max),
+
+        [0.0],
+
+        dense_output=True,
+
+        rtol=1e-6,
+        atol=1e-8
+    )
+
+    return sol.sol
+
+# =========================================
+# SOUND HORIZON
+# =========================================
+
+Omega_b = 0.049
+
+Omega_gamma = 5.38e-5
+
+def R_of_z(z):
+
+    return (
+        3.0 * Omega_b
+    ) / (
+        4.0 * Omega_gamma
+    ) / (1.0 + z)
+def c_s(z):
+
+    return c / np.sqrt(
+        3.0 * (1.0 + R_of_z(z))
+    )
+
+# =========================================
+# r_s(z*)
+# =========================================
+
+def r_s_LCDM(z_star):
+
+    integrand = lambda z: (
+
+        c_s(z)
+
+        /
+
+        (
+            H0 * np.sqrt(
+                Omega_r * (1.0 + z)**4
+                + Omega_M * (1.0 + z)**3
+                + Omega_lam
+            )
+        )
+    )
+
+    val, _ = quad(
+
+        integrand,
+
+        z_star,
+        1e5,
+
+        epsabs=1e-6,
+        epsrel=1e-6
+    )
+
+    return val
+
+def r_s_TVVVV(z_star):
+
+    integrand = lambda z: (
+
+        c_s(z)
+
+        /
+
+        (
+            H0 * np.sqrt(
+                Omega_r * (1.0 + z)**4
+                + Omega_m * (1.0 + z)**3
+
+            )
+        )
+    )
+
+    val, _ = quad(
+
+        integrand,
+
+        z_star,
+        1e5,
+
+        epsabs=1e-6,
+        epsrel=1e-6
+    )
+
+    return val
+
+
+# =========================================
+# θs
+# =========================================
+
+theta_s_Planck = 0.01041
+# =========================================
+# H0 inferred from θs
+# =========================================
+
+def H0_CMB_from_params(H0_val):
+
+    z_star = 1100
+
+    chi_sol = chi_of_z(z_star)
+
+    chi_z = lambda z: chi_sol(z)[0]
+
+    chi_T = chi_z(z_star)
+
+    rs = r_s_TVVVV(z_star)
+
+    theta = rs / chi_T
+
+    return H0_val * theta / theta_s_Planck
+
+# =========================================
+# TEST
+# =========================================
+
+
+    z_star = 1100.0
+
+    chi_sol = chi_of_z(z_star)
+
+    chi_z = lambda z: chi_sol(z)[0]
+
+    chi_T = chi_z(z_star)
+
+    rs = r_s_TVVVV(z_star)
+
+    theta = rs / chi_T
+
+    H0_cmb = H0_CMB_from_params(H0)
+
+
+
+
+
+    print("\nTVVVV sanity check:")
+
+    print(f"chi(z*) = {chi_T:.6f}")
+
+    print(f"r_s     = {rs:.6f}")
+
+    print(f"theta_s = {theta:.8f}")
+
+    print(f"H0_CMB  = {H0_cmb:.6f}")
+
+
+import numpy as np
+from scipy.integrate import solve_ivp
+
+from s8_h0_theta_star_2852026_bezscanu_jwst_tabulka import (
+    H0,
+    Omega_m,
+    chi_of_z,
+    H_TVVVV_z,
+    chi0,
+    beta
+)
+
+# ==========================================
+# převody
+# ==========================================
+
+def z_of_a(a):
+    return 1.0 / a - 1.0
+
+def chi_of_a(a, chi_solution):
+    z = z_of_a(a)
+    return float(chi_solution(z)[0])
+
+# ==========================================
+# Geff/G
+# ==========================================
+
+def Geff_over_G(chi):
+    x = 1.0 + chi / chi0
+    x = np.maximum(x, 1e-12)
+    return 1.0 - beta * np.log(x)
+
+# ==========================================
+# decoherence
+# ==========================================
+
+def Gamma_of_chi(chi):
+    x = 1.0 + chi / chi0
+    x = np.maximum(x, 1.000001)                                                             L = np.log(x)
+    gamma = beta / (x * (1.0 + L))
+    return gamma
+
+def damping_term(chi, ddelta_da):
+    return Gamma_of_chi(chi) * ddelta_da
+
+# ==========================================
+# růstová rovnice TVVVV
+# ==========================================
+def growth_eq_TVVVV(a, y, chi_solution):
+    delta, ddelta_da = y
+
+    z   = z_of_a(a)
+    chi = chi_of_a(a, chi_solution)
+
+    # TADY BYLA CHYBA: musí tam jít chi, ne chi_solution
+    H = float(H_TVVVV_z(z, chi))
+
+    # numerická derivace dlnH/dlna
+    eps = 1e-3
+    ap = a * (1.0 + eps)
+    am = a * (1.0 - eps)
+
+    chip = chi_of_a(ap, chi_solution)
+    chim = chi_of_a(am, chi_solution)
+
+    Hp = float(H_TVVVV_z(z_of_a(ap), chip))
+    Hm = float(H_TVVVV_z(z_of_a(am), chim))
+
+    dlnH_dlna = (np.log(Hp) - np.log(Hm)) / np.log(ap / am)
+
+    # gravitační člen
+    grav = (
+        1.5
+        * Omega_m
+        * (H0**2)
+        * a**(-5)
+        / (H**2)
+    )
+    grav *= Geff_over_G(chi)
+
+    # damping
+    damp = damping_term(chi, ddelta_da)
+
+    d2delta_da2 = (
+        grav * delta
+        - ((3.0 / a) + dlnH_dlna / a) * ddelta_da
+        - damp
+    )
+
+    return [ddelta_da, float(d2delta_da2)]
+
+# ==========================================
+# solve
+# ==========================================
+
+def solve_growth_TVVVV(a_ini=1e-3, a_fin=1.0):
+    chi_solution = chi_of_z(1100.0)
+
+    y0 = [a_ini, 1.0]
+
+
+
+    # ==========================================
+
+def solve_growth_TVVVV(a_ini=1e-3, a_fin=1.0):                                              # POJISTKA: Pokud zvenčí omylem přiteče 0.0, přepíšeme ji na 1e-3
+    if a_ini <= 0.0:                                                                            a_ini = 1e-3
+                                                                                            chi_solution = chi_of_z(1100.0)
+                                                                                            # Počáteční podmínka: delta(a) ~ a v raném vesmíru
+    y0 = [a_ini, 1.0]                                                                   
+    sol = solve_ivp(                                                                            lambda a, y: growth_eq_TVVVV(a, y, chi_solution),
+        (a_ini, a_fin),                                                                         y0,
+        dense_output=True,
+        rtol=1e-6,
+        atol=1e-8
+    )
+
+    return sol
+
+
+# ==========================================
+# quick test
+# ==========================================
+
+    sol = solve_growth_TVVVV()                                                              a_test = 1.0
+    delta = sol.sol(a_test)[0]                                                          
+    print("=== TVVVV growth test ===")
+    print(f"delta(a=1) = {delta}")
+
+import numpy as np
+from scipy.integrate import solve_ivp
+from s8_h0_theta_star_2852026_bezscanu_jwst_tabulka import H0, Omega_m, Omega_M
+from s8_h0_theta_star_2852026_bezscanu_jwst_tabulka import solve_growth_TVVVV
+#=========================================
+#LCDM
+#=========================================
+def E_LCDM(a):
+    Omega_r = 9e-5
+
+    Omega_lam = 1.0 - Omega_M - Omega_r
+
+    return np.sqrt(
+        Omega_M * a**-3
+        + Omega_r * a**-4
+        + Omega_lam
+    )
+
+def H_LCDM_a(a):
+    return H0 * E_LCDM(a)
+
+#=========================================
+#LCDM growth equation
+#=========================================
+def growth_eq_LCDM(a, y):
+    delta, ddelta_da = y
+
+    H = H_LCDM_a(a)
+
+    eps = 1e-3
+
+    ap = a * (1.0 + eps)
+    am = a * (1.0 - eps)
+
+    Hp = H_LCDM_a(ap)
+    Hm = H_LCDM_a(am)
+
+    dlnH_dla = (
+        np.log(Hp) - np.log(Hm)
+    ) / np.log((1.0 + eps)/(1.0 - eps))
+
+    grav = (
+        1.5
+        * Omega_M
+        * H0**2
+        * a**-5
+        / H**2
+    )
+
+    d2delta_da2 = (
+        grav * delta
+        - (3.0 + dlnH_dla)
+        * ddelta_da / a
+    )
+
+    return [ddelta_da, d2delta_da2]
+
+# =========================================
+# LCDM solver
+# =========================================
+
+def solve_growth_LCDM():
+
+    y0 = [1e-3, 1.0]
+
+    sol = solve_ivp(
+        growth_eq_LCDM,
+        (1e-3, 1.0),
+        y0,
+        dense_output=True,
+        rtol=1e-6,
+        atol=1e-8
+    )
+
+    return sol
+
+# =========================================
+# Převody
+# =========================================
+
+def a_of_z(z):
+
+    return 1.0 / (1.0 + z)
+
+# =========================================
+# S8
+# =========================================
+
+sigma8_LCDM = 0.83
+
+def compute_S8_TVVVV():
+
+    sol_LCDM = solve_growth_LCDM()
+
+    sol_TVVVV = solve_growth_TVVVV()
+
+    # -------------------------
+    # NORMALIZACE
+    # -------------------------
+
+    D_LCDM = sol_LCDM.sol(1.0)[0]
+
+    D_TVVVV = sol_TVVVV.sol(1.0)[0]
+
+    ratio = D_TVVVV / D_LCDM
+
+    sigma8_TVVVV = sigma8_LCDM * ratio
+
+    S8_LCDM = (
+        sigma8_LCDM
+        * np.sqrt(Omega_M / 0.3)
+    )
+
+    S8_TVVVV = (
+        sigma8_TVVVV
+        * np.sqrt(Omega_m / 0.3)
+    )
+
+    return (
+        S8_LCDM,
+        S8_TVVVV,
+        D_LCDM,
+        D_TVVVV
+    )
+
+# =========================================
+# fσ8
+# =========================================
+
+def f_sigma8_from_sol(
+    sol,
+    z,
+    sigma8_0,
+    D0
+):
+
+    a = a_of_z(z)
+
+    delta, ddelta_da = sol.sol(a)
+
+    f = (a / delta) * ddelta_da
+
+    sigma8_z = sigma8_0 * delta / D0
+
+    return f * sigma8_z
+
+def compute_fsigma8_TVVVV(z_points):
+
+    sol_LCDM = solve_growth_LCDM()
+
+    sol_TVVVV = solve_growth_TVVVV()
+
+    D_LCDM = sol_LCDM.sol(1.0)[0]
+
+    D_TVVVV = sol_TVVVV.sol(1.0)[0]
+
+    sigma8_TVVVV = (
+        sigma8_LCDM
+        * D_TVVVV / D_LCDM
+    )
+
+    fs8 = []
+
+    for z in z_points:
+
+        val = f_sigma8_from_sol(
+            sol_TVVVV,
+            z,
+            sigma8_TVVVV,
+            D_TVVVV
+        )
+
+        fs8.append(val)
+
+    return np.array(fs8)
+
+# =========================================
+# TEST
+# =========================================
+
+
+    (
+        S8_LCDM,
+        S8_TVVVV,
+        D_LCDM,
+        D_TVVVV
+    ) = compute_S8_TVVVV()
+
+    print("\n=== S8 TVVVV ===")
+
+    print(f"D_LCDM(a=1)   = {D_LCDM:.6f}")
+    print(f"D_TVVVV(a=1)  = {D_TVVVV:.6f}")
+
+    print(f"S8_LCDM       = {S8_LCDM:.6f}")
+    print(f"S8_TVVVV      = {S8_TVVVV:.6f}")
+
+    print(f"ΔS8            = {S8_TVVVV - S8_LCDM:.6f}")
+
+    z_points = [0.0, 0.15, 0.22, 0.38, 0.51, 0.61, 0.80, 1.2, 1.4, 1.6, 1.8, 2.20]
+
+    fs8 = compute_fsigma8_TVVVV(z_points)
+
+    print("\n=== fσ8 TVVVV ===")
+
+    for z, val in zip(z_points, fs8):
+
+        print(f"z={z:.2f}  ->  fσ8 = {val:.6f}")
+
+
+import numpy as np
+from scipy.integrate import quad
+
+from s8_h0_theta_star_2852026_bezscanu_jwst_tabulka import (
+    H0,
+    H_TVVVV_z,
+    chi_of_z,
+    Omega_m,
+    Omega_r,
+    gamma_tvvvv,
+    beta
+)
+
+MPC_IN_KM = 3.085677581e19
+SEC_IN_GYR = 3.15576e16
+
+
+# ----------------------------------------
+# H(z) v raném vesmíru (z > 20)
+# ----------------------------------------
+def H_TVVVV_highz(z):
+    zp1 = 1.0 + z
+    E2 = Omega_r * zp1**4 + gamma_tvvvv * zp1**6
+    return H0 * np.sqrt(E2)
+
+
+# ----------------------------------------
+# věk vesmíru při z = 0
+# ----------------------------------------
+def age_of_universe():
+
+    chi_solution = chi_of_z(20.0)
+
+    def integrand_lowz(z):
+        chi = float(chi_solution(z)[0])
+        H = H_TVVVV_z(z, chi)
+        H_si = H / MPC_IN_KM
+        return 1.0 / ((1.0 + z) * H_si)
+
+    age_low, _ = quad(integrand_lowz, 0.0, 20.0,
+                      epsabs=1e-8, epsrel=1e-8, limit=500)
+
+    def integrand_highz(z):
+        H = H_TVVVV_highz(z)                                                                    H_si = H / MPC_IN_KM
+        return 1.0 / ((1.0 + z) * H_si)
+
+    age_high, _ = quad(integrand_highz, 20.0, 1e5,
+                       epsabs=1e-8, epsrel=1e-8, limit=500)
+
+    return (age_low + age_high) / SEC_IN_GYR
+
+
+
+# ----------------------------------------
+# věk vesmíru při libovolném z
+# ----------------------------------------
+def age_at_z(z_target):
+
+    # vlastní chi_solution pro tuto funkci
+    chi_solution = chi_of_z(20.0)
+
+    def integrand_lowz(z):
+        chi = float(chi_solution(z)[0])
+        H = H_TVVVV_z(z, chi)
+        H_si = H / MPC_IN_KM
+        return 1.0 / ((1.0 + z) * H_si)
+
+    age_low, _ = quad(integrand_lowz, z_target, 20.0,
+                      epsabs=1e-8, epsrel=1e-8, limit=500)
+
+    def integrand_highz(z):
+        H = H_TVVVV_highz(z)
+        H_si = H / MPC_IN_KM
+        return 1.0 / ((1.0 + z) * H_si)
+
+    age_high, _ = quad(integrand_highz, 20.0, 1e5,
+                       epsabs=1e-8, epsrel=1e-8, limit=500)
+
+    return (age_low + age_high) / SEC_IN_GYR
+
+
+# ----------------------------------------
+# test
+# ----------------------------------------
+    print("\nTVVVV age (clean integrator):")
+    print(f"{age_of_universe():.4f} Gyr")
+    print("Age at z=0:", age_at_z(0))
+    print("Age at z=1:", age_at_z(1))
+    print("Age at z=2:", age_at_z(2))
+    print("Age at z=5:", age_at_z(5))
+    print("Age at z=10:", age_at_z(10))
+    print("Age at z=15:", age_at_z(15))
+    print("Age at z=20:", age_at_z(20))
+
+# =========================================================================
+# BLOK PRO GENEROVÁNÍ A UKLÁDÁNÍ GRAFŮ (VLOŽIT NA KONEC SOUBORU)
+# =========================================================================
+import os
+import matplotlib.pyplot as plt
+
+def generuj_a_uloz_grafy():
+    # Cílová složka pro uložení
+    output_dir = "/storage/emulated/0/Download"
+
+    # Pojistka: Pokud složka neexistuje (např. testuješ na PC), uloží se do aktuálního adresáře
+    if not os.path.exists(output_dir):
+        print(path_slozky := f"Složka {output_dir} nenalezena, ukládám do aktuálního adresáře.")
+        output_dir = "."                                                                    else:
+        print(f"Ukládám grafy do: {output_dir}")                                        
+    # Spuštění solverů pro získání dat                                                      print("Počítám data pro grafy...")
+    sol_LCDM = solve_growth_LCDM()                                                          sol_TVVVV = solve_growth_TVVVV()
+    chi_sol_global = chi_of_z(1100.0)                                                   
+    D_LCDM_1 = sol_LCDM.sol(1.0)[0]                                                         D_TVVVV_1 = sol_TVVVV.sol(1.0)[0]
+                                                                                            sigma8_LCDM = 0.83
+    sigma8_TVVVV = sigma8_LCDM * (D_TVVVV_1 / D_LCDM_1)
+
+    # Vzhled grafů
+    plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
+
+    # ---------------------------------------------------------------------
+    # GRAF 1: Růst poruch delta(a)
+    # ---------------------------------------------------------------------
+    print("Generuji Graf 1: Růst poruch...")
+    a_arr = np.linspace(1e-3, 1.0, 200)
+    delta_TVVVV_arr = [sol_TVVVV.sol(a)[0] for a in a_arr]
+    delta_LCDM_arr = [sol_LCDM.sol(a)[0] for a in a_arr]                                
+    fig, ax = plt.subplots(figsize=(8, 5))                                                  ax.plot(a_arr, delta_TVVVV_arr, 'b-', linewidth=2, label=r'TVVVV ($\Omega_m = \beta + \Omega_b$)')
+    ax.plot(a_arr, delta_LCDM_arr, 'r--', linewidth=1.5, label=r'$\Lambda$CDM')
+    ax.set_xlabel('Expansní faktor $a$', fontsize=12)
+    ax.set_ylabel(r'Růst poruch $\delta(a)$', fontsize=12)
+    ax.set_title('Srovnání růstu poruch lineární struktury', fontsize=14)
+    ax.legend(fontsize=11)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'tvvvv_growth_comparison_0000.png'), dpi=150)
+    plt.close()
+
+    # ---------------------------------------------------------------------
+    # GRAF 2: Průběh fsigma8(z)
+    # ---------------------------------------------------------------------
+    print("Generuji Graf 2: fsigma8...")
+    z_arr = np.linspace(0.0, 2.2, 100)
+    fs8_TVVVV_arr = [f_sigma8_from_sol(sol_TVVVV, z, sigma8_TVVVV, D_TVVVV_1) for z in z_arr]
+    fs8_LCDM_arr = [f_sigma8_from_sol(sol_LCDM, z, sigma8_LCDM, D_LCDM_1) for z in z_arr]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(z_arr, fs8_TVVVV_arr, 'b-', linewidth=2, label='TVVVV')
+    ax.plot(z_arr, fs8_LCDM_arr, 'r--', linewidth=1.5, label=r'$\Lambda$CDM')
+    ax.set_xlabel('Redshift $z$', fontsize=12)
+    ax.set_ylabel(r'$f\sigma_8(z)$', fontsize=12)
+    ax.set_title(r'Průběh $f\sigma_8(z)$ v závislosti na redshiftu', fontsize=14)
+    ax.legend(fontsize=11)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '0562026tvvvv_fsigma8_comparison_0000.png'), dpi=150)
+    plt.close()
+
+    # ---------------------------------------------------------------------
+    # GRAF 3: Evoluce Geff/G a W(chi)
+    # ---------------------------------------------------------------------
+    print("Generuji Graf 3: Geff a W(chi)...")
+    z_arr_bg = np.linspace(0.0, 5.0, 100)
+    chi_vals = [float(chi_sol_global(z)[0]) for z in z_arr_bg]
+    Geff_vals = [Geff_over_G(ch) for ch in chi_vals]
+    W_vals = [W_chi(ch) for ch in chi_vals]
+
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    color = 'tab:blue'
+    ax1.set_xlabel('Redshift $z$', fontsize=12)
+    ax1.set_ylabel(r'$G_{\mathrm{eff}}/G$', color=color, fontsize=12)
+    ax1.plot(z_arr_bg, Geff_vals, color=color, linestyle='-', linewidth=2, label=r'$G_{\mathrm{eff}}/G$')
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    ax2 = ax1.twinx()
+    color = 'tab:orange'
+    ax2.set_ylabel(r'Geometrická deformace $W(\chi)$', color=color, fontsize=12)
+    ax2.plot(z_arr_bg, W_vals, color=color, linestyle='-.', linewidth=2, label=r'$W(\chi)$')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.title(r'Evoluce $G_{\mathrm{eff}}/G$ a $W(\chi)$ v závislosti na redshiftu', fontsize=14)
+    fig.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'tvvvv_geff_w_evolution_0000.png'), dpi=150)
+    plt.close()
+
+    print("Všechny grafy byly úspěšně uloženy do cílové složky!")
+
+# Spuštění generování grafů, pokud se skript pouští jako hlavní program
+    generuj_a_uloz_grafy()
+
+
+# =========================================
+# BAO CHI2 TEST
+# =========================================
+
+def bao_chi2():
+
+    z_star = 1100.0
+
+    rd = r_s_TVVVV(z_star)
+
+    chi_solution = chi_of_z(3.0)
+
+    # ------------------------------
+    # veřejné BAO body
+    # ------------------------------
+
+    data = [
+
+        # z, typ, hodnota, sigma
+
+        (0.38, "DV", 10.23, 1.02),
+        (0.51, "DV", 13.36, 1.18),
+        (0.61, "DV", 15.44, 1.20),
+
+        (0.83, "DM", 18.77, 2.35),
+        (0.83, "DH", 19.51, 2.05),
+
+        (1.48, "DM", 27.79, 3.54),
+        (1.48, "DH", 13.24, 0.96),
+
+        (2.33, "DM", 36.02, 4.30),
+        (2.33, "DH", 9.01, 0.25),
+
+    ]
+
+    chi2 = 0.0
+
+    print()
+    print("=== BAO CHI2 TEST ===")
+    print()
+
+    print(
+        "z      | Observable | Data | TVVVV | chi2"
+    )
+
+    print("-" * 60)
+
+    for z, kind, obs, sigma in data:
+
+        chi = float(
+            chi_solution(z)[0]
+        )
+
+        H = H_TVVVV_z(
+            z,
+            chi
+        )
+
+        DM = chi
+
+        DH = c / H
+
+        DV = (
+            DM**2
+            * (c * z / H)
+        )**(1.0/3.0)
+
+        if kind == "DM":
+            theory = DM / rd
+
+        elif kind == "DH":
+            theory = DH / rd
+
+        else:
+            theory = DV / rd
+
+        contrib = (
+            (theory - obs)
+            / sigma
+        )**2
+
+        chi2 += contrib
+
+        print(
+            f"{z:4.2f}   "
+            f"{kind:>2}   "
+            f"{obs:8.3f}   "
+            f"{theory:8.3f}   "
+            f"{contrib:8.3f}"
+        )
+
+    print("-" * 60)
+
+    dof = len(data) - 2
+
+    print()
+    print(f"BAO chi2 = {chi2:.3f}")
+    print(f"chi2/dof = {chi2/dof:.3f}")
+    return chi2
+
+
+    ...
+
+    bao_chi2()
+
+
+chi_sol = chi_of_z(1100)
+
+print("chi_T(0.38) =", float(chi_sol(0.38)[0]))
+print("chi_T(0.51) =", float(chi_sol(0.51)[0]))
+print("chi_T(0.61) =", float(chi_sol(0.61)[0]))
+print("chi_T(0.83) =", float(chi_sol(0.83)[0]))
+print("chi_T(1.48) =", float(chi_sol(1.48)[0]))
+print("chi_T(2.33) =", float(chi_sol(2.33)[0]))
+
+
